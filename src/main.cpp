@@ -1,4 +1,6 @@
+#include "SDL3/SDL_keyboard.h"
 #include "SDL3/SDL_rect.h"
+#include "SDL3/SDL_timer.h"
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
 #include <iostream>
@@ -7,9 +9,11 @@
 static constexpr int WIDTH = 640;
 static constexpr int HEIGHT = 480;
 static constexpr int BALL_RADIUS = 15;
+static constexpr float SPEED = 300.0f;
 
 void DrawCircle(SDL_Renderer *renderer, float cx, float cy, int radius);
 void FillCircle(SDL_Renderer *renderer, float cx, float cy, int radius);
+int initApplication(SDL_Renderer *renderer, SDL_FRect &p1, SDL_FRect &p2);
 
 int main(void) {
 
@@ -27,14 +31,72 @@ int main(void) {
   }
 
   renderer = SDL_CreateRenderer(window, NULL);
-  SDL_SetRenderDrawColor(renderer, 255, 255, 255, SDL_ALPHA_OPAQUE);
+  SDL_SetRenderVSync(renderer, 1);
 
-  const SDL_FRect p1 = {
-      .x = 20.0f, .y = (float)HEIGHT / 2.0f, .w = 15.0f, .h = 90.0f};
-  const SDL_FRect p2 = {.x = (float)WIDTH - 20.0f,
-                        .y = (float)HEIGHT / 2.0f,
-                        .w = 15.0f,
-                        .h = 90.0f};
+  SDL_FRect p1 = {.x = 20.0f,
+                  .y = (float)HEIGHT / 2.0f - 45.0f,
+                  .w = 15.0f,
+                  .h = 90.0f};
+  SDL_FRect p2 = {.x = (float)WIDTH - 20.0f,
+                  .y = (float)HEIGHT / 2.0f - 45.0f,
+                  .w = 15.0f,
+                  .h = 90.0f};
+
+  int result = initApplication(renderer, p1, p2);
+
+  if (result == 1) {
+    SDL_Quit();
+    return 1;
+  }
+
+  Uint64 lastTicks = SDL_GetTicks();
+
+  while (!done) {
+    SDL_Event event;
+
+    while (SDL_PollEvent(&event)) {
+      if (event.type == SDL_EVENT_QUIT) {
+        done = true;
+      }
+    }
+
+    Uint64 now = SDL_GetTicks();
+    float dt = (now - lastTicks) / 1000.0f;
+    lastTicks = now;
+
+    const bool *keys = SDL_GetKeyboardState(nullptr);
+    float dx = 0, dy = 0;
+    if (keys[SDL_SCANCODE_LEFT] || keys[SDL_SCANCODE_A])
+      dx -= 1;
+    if (keys[SDL_SCANCODE_RIGHT] || keys[SDL_SCANCODE_D])
+      dx += 1;
+    if (keys[SDL_SCANCODE_UP] || keys[SDL_SCANCODE_W])
+      dy -= 1;
+    if (keys[SDL_SCANCODE_DOWN] || keys[SDL_SCANCODE_S])
+      dy += 1;
+
+    p1.y += dy * SPEED * dt;
+
+    SDL_SetRenderDrawColor(renderer, 0, 0, 0, SDL_ALPHA_OPAQUE);
+    SDL_RenderClear(renderer);
+
+    SDL_SetRenderDrawColor(renderer, 255, 255, 255, SDL_ALPHA_OPAQUE);
+    SDL_RenderFillRect(renderer, &p1);
+    SDL_RenderFillRect(renderer, &p2);
+    FillCircle(renderer, (float)WIDTH / 2.0f, (float)HEIGHT / 2.0f,
+               BALL_RADIUS);
+
+    SDL_RenderPresent(renderer);
+  }
+
+  SDL_DestroyWindow(window);
+
+  SDL_Quit();
+  return 0;
+}
+
+int initApplication(SDL_Renderer *renderer, SDL_FRect &p1, SDL_FRect &p2) {
+  SDL_SetRenderDrawColor(renderer, 255, 255, 255, SDL_ALPHA_OPAQUE);
 
   bool successP1 = SDL_RenderRect(renderer, &p1);
   if (!successP1) {
@@ -60,19 +122,6 @@ int main(void) {
 
   SDL_RenderPresent(renderer);
 
-  while (!done) {
-    SDL_Event event;
-
-    while (SDL_PollEvent(&event)) {
-      if (event.type == SDL_EVENT_QUIT) {
-        done = true;
-      }
-    }
-  }
-
-  SDL_DestroyWindow(window);
-
-  SDL_Quit();
   return 0;
 }
 
