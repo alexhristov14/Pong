@@ -1,9 +1,15 @@
+#include "SDL3/SDL_rect.h"
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
 #include <iostream>
+#include <math.h>
 
 static constexpr int WIDTH = 640;
 static constexpr int HEIGHT = 480;
+static constexpr int BALL_RADIUS = 15;
+
+void DrawCircle(SDL_Renderer *renderer, float cx, float cy, int radius);
+void FillCircle(SDL_Renderer *renderer, float cx, float cy, int radius);
 
 int main(void) {
 
@@ -42,10 +48,15 @@ int main(void) {
     return 1;
   }
 
-  SDL_SetRenderDrawColor(renderer, 0, 0, 255, SDL_ALPHA_OPAQUE);
+  // render the rectangles
+  SDL_SetRenderDrawColor(renderer, 255, 255, 255, SDL_ALPHA_OPAQUE);
   SDL_RenderFillRect(renderer, &p1);
-  SDL_SetRenderDrawColor(renderer, 255, 0, 0, SDL_ALPHA_OPAQUE);
   SDL_RenderFillRect(renderer, &p2);
+
+  DrawCircle(renderer, (float)WIDTH / 2.0f, (float)HEIGHT / 2.0f + BALL_RADIUS,
+             BALL_RADIUS);
+  FillCircle(renderer, (float)WIDTH / 2.0f, (float)HEIGHT / 2.0f + BALL_RADIUS,
+             BALL_RADIUS);
 
   SDL_RenderPresent(renderer);
 
@@ -63,4 +74,34 @@ int main(void) {
 
   SDL_Quit();
   return 0;
+}
+
+void DrawCircle(SDL_Renderer *renderer, float cx, float cy, int radius) {
+  int x = radius;
+  int y = 0;
+  int err = 1 - radius;
+
+  while (x >= y) {
+    SDL_FPoint pts[8] = {
+        {cx + x, cy + y}, {cx + y, cy + x}, {cx - y, cy + x}, {cx - x, cy + y},
+        {cx - x, cy - y}, {cx - y, cy - x}, {cx + y, cy - x}, {cx + x, cy - y},
+    };
+
+    SDL_RenderPoints(renderer, pts, 8);
+
+    ++y;
+    if (err < 0) {
+      err += 2 * y + 1;
+    } else {
+      x--;
+      err += 2 * (y - x) + 1;
+    }
+  }
+}
+
+void FillCircle(SDL_Renderer *renderer, float cx, float cy, int radius) {
+  for (int dy = -radius; dy <= radius; dy++) {
+    float dx = sqrtf((float)(radius * radius - dy * dy));
+    SDL_RenderLine(renderer, cx - dx, cy + dy, cx + dx, cy + dy);
+  }
 }
