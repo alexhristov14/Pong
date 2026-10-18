@@ -1,38 +1,14 @@
-#include "SDL3/SDL_keyboard.h"
-#include "SDL3/SDL_rect.h"
-#include "SDL3/SDL_timer.h"
+#include "pong/ai.hpp"
+#include "pong/circle.hpp"
+#include "pong/data.hpp"
+#include "pong/game.hpp"
+#include "pong/score.hpp"
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
 #include <SDL3_ttf/SDL_ttf.h>
 #include <format>
-#include <iostream>
 #include <math.h>
-
-static int score_p1 = 0;
-static int score_p2 = 2;
-
-static constexpr int WIDTH = 640;
-static constexpr int HEIGHT = 480;
-static constexpr int BALL_RADIUS = 15;
-static constexpr float SPEED = 300.0f;
-static constexpr float BALL_SPEED = 300.0f;
-
-typedef struct PongBall {
-  int radius = BALL_RADIUS;
-  float cx, cy;
-  float dx = -1.0f, dy = -0.5f;
-} PongBall;
-
-void renderScore(SDL_Renderer *renderer, TTF_Font *font, int score, float x,
-                 float y);
-void DrawCircleOutline(SDL_Renderer *renderer, const PongBall &ball);
-void FillCircle(SDL_Renderer *renderer, const PongBall &ball);
-void DrawCircle(SDL_Renderer *renderer, const PongBall &ball);
-int initApplication(SDL_Renderer *renderer, SDL_FRect &p1, SDL_FRect &p2,
-                    PongBall &ball);
-void restart(SDL_FRect &p1, SDL_FRect &p2, PongBall &ball,
-             const SDL_FRect &startP1, const SDL_FRect &startP2,
-             const PongBall &startBall);
+#include <string>
 
 int main(void) {
 
@@ -133,9 +109,11 @@ int main(void) {
     if (p1.y + 90.0f >= HEIGHT)
       p1.y = HEIGHT - 90.0f;
 
+    updateAI(p2, ball, dt);
+
     // Moving the ball
-    ball.cx += ball.dx * BALL_SPEED * dt;
-    ball.cy += ball.dy * BALL_SPEED * dt;
+    ball.cx += ball.dx * ball.speed * dt;
+    ball.cy += ball.dy * ball.speed * dt;
 
     if (ball.cy - ball.radius < 0.0f) {
       ball.cy = ball.radius;
@@ -146,29 +124,32 @@ int main(void) {
       ball.dy = -fabsf(ball.dy);
     }
 
-    // Detecting ball & paddle collision
-    if (ball.dx < 0.0f && ball.cx - ball.radius <= p1.x + p1.w &&
-        ball.cx + ball.radius >= p1.x && ball.cy + ball.radius >= p1.y &&
-        ball.cy - ball.radius <= p1.y + p1.h) {
+    // Detecting ball & paddle collision. The ball's center must still be in
+    // front of the paddle's face; once it's past, it's a miss.
+    if (ball.dx < 0.0f && ball.cx >= p1.x + p1.w && ballHitsPaddle(ball, p1)) {
       ball.cx = p1.x + p1.w + ball.radius;
-      ball.dx = 1.0f;
+      float angle = bounceAngle(ball, p1);
+      ball.dx = cosf(angle);
+      ball.dy = sinf(angle);
+      registerPaddleHit(ball);
     }
-    if (ball.dx > 0.0f && ball.cx + ball.radius >= p2.x &&
-        ball.cx - ball.radius <= p2.x + p2.w && ball.cy + ball.radius >= p2.y &&
-        ball.cy - ball.radius <= p2.y + p2.h) {
+    if (ball.dx > 0.0f && ball.cx <= p2.x && ballHitsPaddle(ball, p2)) {
       ball.cx = p2.x - ball.radius;
-      ball.dx = -1.0f;
+      float angle = bounceAngle(ball, p2);
+      ball.dx = -cosf(angle);
+      ball.dy = sinf(angle);
+      registerPaddleHit(ball);
     }
 
     if (ball.cx - BALL_RADIUS <= 0.0f) {
       ++score_p2;
       restart(p1, p2, ball, startP1, startP2, startBall);
-      ball.dx = -1.0f; // serve toward player 1, who lost the point
+      ball.dx = -fabsf(ball.dx); // serve toward player 1, who lost the point
     }
     if (ball.cx + BALL_RADIUS >= WIDTH) {
       ++score_p1;
       restart(p1, p2, ball, startP1, startP2, startBall);
-      ball.dx = 1.0f; // serve toward player 2, who lost the point
+      ball.dx = fabsf(ball.dx); // serve toward player 2, who lost the point
     }
 
     SDL_SetRenderDrawColor(renderer, 0, 0, 0, SDL_ALPHA_OPAQUE);
@@ -192,104 +173,4 @@ int main(void) {
   TTF_Quit();
   SDL_Quit();
   return 0;
-}
-
-void renderScore(SDL_Renderer *renderer, TTF_Font *font, int score, float x,
-                 float y) {
-  std::string text = std::format("Score: {}", score);
-
-  SDL_Color color = {255, 255, 255, 255};
-  SDL_Surface *surface =
-      TTF_RenderText_Blended(font, text.c_str(), text.size(), color);
-
-  if (surface) {
-    SDL_Texture *texture = SDL_CreateTextureFromSurface(renderer, surface);
-
-    if (texture) {
-      SDL_FRect dest = {x, y, 0, 0};
-      SDL_GetTextureSize(texture, &dest.w, &dest.h);
-
-      SDL_RenderTexture(renderer, texture, NULL, &dest);
-      SDL_DestroyTexture(texture);
-    }
-    SDL_DestroySurface(surface);
-  }
-}
-
-int initApplication(SDL_Renderer *renderer, SDL_FRect &p1, SDL_FRect &p2,
-                    PongBall &ball) {
-  SDL_SetRenderDrawColor(renderer, 255, 255, 255, SDL_ALPHA_OPAQUE);
-
-  bool successP1 = SDL_RenderRect(renderer, &p1);
-  if (!successP1) {
-    std::cerr << "Error rendering player one's rectangle\n";
-    return 1;
-  }
-
-  bool successP2 = SDL_RenderRect(renderer, &p2);
-  if (!successP2) {
-    std::cerr << "Error rendering player two's rectangle\n";
-    return 1;
-  }
-
-  // render the rectangles
-  SDL_SetRenderDrawColor(renderer, 255, 255, 255, SDL_ALPHA_OPAQUE);
-  SDL_RenderFillRect(renderer, &p1);
-  SDL_RenderFillRect(renderer, &p2);
-
-  DrawCircle(renderer, ball);
-
-  SDL_RenderPresent(renderer);
-
-  return 0;
-}
-
-void DrawCircleOutline(SDL_Renderer *renderer, const PongBall &ball) {
-  float cx = ball.cx;
-  float cy = ball.cy;
-  int x = ball.radius;
-  int y = 0;
-  int err = 1 - ball.radius;
-
-  while (x >= y) {
-    SDL_FPoint pts[8] = {
-        {cx + x, cy + y}, {cx + y, cy + x}, {cx - y, cy + x}, {cx - x, cy + y},
-        {cx - x, cy - y}, {cx - y, cy - x}, {cx + y, cy - x}, {cx + x, cy - y},
-    };
-
-    SDL_RenderPoints(renderer, pts, 8);
-
-    ++y;
-    if (err < 0) {
-      err += 2 * y + 1;
-    } else {
-      x--;
-      err += 2 * (y - x) + 1;
-    }
-  }
-}
-
-void FillCircle(SDL_Renderer *renderer, const PongBall &ball) {
-  int radius = ball.radius;
-  for (int dy = -radius; dy <= radius; dy++) {
-    float dx = sqrtf((float)(radius * radius - dy * dy));
-    SDL_RenderLine(renderer, ball.cx - dx, ball.cy + dy, ball.cx + dx,
-                   ball.cy + dy);
-  }
-}
-
-void DrawCircle(SDL_Renderer *renderer, const PongBall &ball) {
-  DrawCircleOutline(renderer, ball);
-  FillCircle(renderer, ball);
-}
-
-void restart(SDL_FRect &p1, SDL_FRect &p2, PongBall &ball,
-             const SDL_FRect &startP1, const SDL_FRect &startP2,
-             const PongBall &startBall) {
-  p1 = startP1;
-  p2 = startP2;
-  ball = startBall;
-
-  // Random serve angle: dy in [-0.75, 0.75]
-  ball.dy = (SDL_randf() * 2.0f - 1.0f) * 0.75f;
 }
