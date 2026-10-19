@@ -5,11 +5,16 @@
 constexpr int WIDTH = 640;
 constexpr int HEIGHT = 480;
 constexpr int BALL_RADIUS = 15;
+constexpr float PADDLE_WIDTH = 15.0f;
+constexpr float PADDLE_HEIGHT = 90.0f;
+constexpr float PADDLE_MARGIN =
+    20.0f; // gap between each paddle and its screen edge
 constexpr float SPEED = 500.0f;
-constexpr float BALL_SPEED = 450.0f;      // starting speed of each serve
-constexpr float MAX_BALL_SPEED = 850.0f;  // faster can skip through paddles
+constexpr float BALL_SPEED = 450.0f;     // starting speed of each serve
+constexpr float MAX_BALL_SPEED = 850.0f; // faster can skip through paddles
 constexpr int HITS_PER_SPEEDUP = 10;
-constexpr float SPEEDUP_FACTOR = 1.1f;    // +10%
+constexpr float SPEEDUP_FACTOR =
+    1.1f; // +10% (as the game moves on, ball goes faster)
 constexpr float AI_SPEED = 360.0f; // slower than the player, so it can miss
 constexpr float AI_DEAD_ZONE = 10.0f;
 constexpr float MAX_SERVE_ANGLE = SDL_PI_F / 4.0f;  // 45 degrees

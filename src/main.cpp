@@ -2,6 +2,7 @@
 #include "pong/circle.hpp"
 #include "pong/data.hpp"
 #include "pong/game.hpp"
+#include "pong/menu.hpp"
 #include "pong/score.hpp"
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
@@ -48,12 +49,14 @@ int main(void) {
   renderer = SDL_CreateRenderer(window, NULL);
   SDL_SetRenderVSync(renderer, 1);
 
-  SDL_FRect p1 = {
-      .x = 20.0f, .y = (float)HEIGHT / 2.0f - 45.0f, .w = 15.0f, .h = 90.0f};
-  SDL_FRect p2 = {.x = (float)WIDTH - 20.0f,
-                  .y = (float)HEIGHT / 2.0f - 45.0f,
-                  .w = 15.0f,
-                  .h = 90.0f};
+  SDL_FRect p1 = {.x = PADDLE_MARGIN,
+                  .y = (float)HEIGHT / 2.0f - PADDLE_HEIGHT / 2.0f,
+                  .w = PADDLE_WIDTH,
+                  .h = PADDLE_HEIGHT};
+  SDL_FRect p2 = {.x = (float)WIDTH - PADDLE_MARGIN - PADDLE_WIDTH,
+                  .y = (float)HEIGHT / 2.0f - PADDLE_HEIGHT / 2.0f,
+                  .w = PADDLE_WIDTH,
+                  .h = PADDLE_HEIGHT};
 
   PongBall ball = {.cx = (float)WIDTH / 2.0f, .cy = (float)HEIGHT / 2.0f};
 
@@ -74,6 +77,14 @@ int main(void) {
   // First serve gets a random angle too
   restart(p1, p2, ball, startP1, startP2, startBall);
 
+  // The game waits on this button before the first serve
+  bool started = false;
+  const Button startButton = {.rect = {.x = WIDTH / 2.0f - 80.0f,
+                                       .y = HEIGHT / 2.0f - 25.0f,
+                                       .w = 160.0f,
+                                       .h = 50.0f},
+                              .label = "Start"};
+
   Uint64 lastTicks = SDL_GetTicks();
 
   while (!done) {
@@ -89,67 +100,82 @@ int main(void) {
         score_p1 = 0;
         score_p2 = 0;
       }
+      if (!started && event.type == SDL_EVENT_MOUSE_BUTTON_DOWN &&
+          event.button.button == SDL_BUTTON_LEFT &&
+          buttonContains(startButton, event.button.x, event.button.y)) {
+        started = true;
+      }
+      if (!started && event.type == SDL_EVENT_KEY_DOWN && !event.key.repeat &&
+          (event.key.scancode == SDL_SCANCODE_RETURN ||
+           event.key.scancode == SDL_SCANCODE_SPACE)) {
+        started = true;
+      }
     }
 
     Uint64 now = SDL_GetTicks();
     float dt = (now - lastTicks) / 1000.0f;
     lastTicks = now;
 
-    const bool *keys = SDL_GetKeyboardState(nullptr);
-    float dy = 0;
-    if (keys[SDL_SCANCODE_UP] || keys[SDL_SCANCODE_W] || keys[SDL_SCANCODE_K])
-      dy -= 1;
-    if (keys[SDL_SCANCODE_DOWN] || keys[SDL_SCANCODE_S] || keys[SDL_SCANCODE_J])
-      dy += 1;
+    // Nothing moves until the game is started
+    if (started) {
+      const bool *keys = SDL_GetKeyboardState(nullptr);
+      float dy = 0;
+      if (keys[SDL_SCANCODE_UP] || keys[SDL_SCANCODE_W] || keys[SDL_SCANCODE_K])
+        dy -= 1;
+      if (keys[SDL_SCANCODE_DOWN] || keys[SDL_SCANCODE_S] ||
+          keys[SDL_SCANCODE_J])
+        dy += 1;
 
-    p1.y += dy * SPEED * dt;
+      p1.y += dy * SPEED * dt;
 
-    if (p1.y < 0.0f)
-      p1.y = 0.0f;
-    if (p1.y + 90.0f >= HEIGHT)
-      p1.y = HEIGHT - 90.0f;
+      if (p1.y < 0.0f)
+        p1.y = 0.0f;
+      if (p1.y + PADDLE_HEIGHT >= HEIGHT)
+        p1.y = HEIGHT - PADDLE_HEIGHT;
 
-    updateAI(p2, ball, dt);
+      updateAI(p2, ball, dt);
 
-    // Moving the ball
-    ball.cx += ball.dx * ball.speed * dt;
-    ball.cy += ball.dy * ball.speed * dt;
+      // Moving the ball
+      ball.cx += ball.dx * ball.speed * dt;
+      ball.cy += ball.dy * ball.speed * dt;
 
-    if (ball.cy - ball.radius < 0.0f) {
-      ball.cy = ball.radius;
-      ball.dy = fabsf(ball.dy);
-    }
-    if (ball.cy + ball.radius > HEIGHT) {
-      ball.cy = HEIGHT - ball.radius;
-      ball.dy = -fabsf(ball.dy);
-    }
+      if (ball.cy - ball.radius < 0.0f) {
+        ball.cy = ball.radius;
+        ball.dy = fabsf(ball.dy);
+      }
+      if (ball.cy + ball.radius > HEIGHT) {
+        ball.cy = HEIGHT - ball.radius;
+        ball.dy = -fabsf(ball.dy);
+      }
 
-    // Detecting ball & paddle collision. The ball's center must still be in
-    // front of the paddle's face; once it's past, it's a miss.
-    if (ball.dx < 0.0f && ball.cx >= p1.x + p1.w && ballHitsPaddle(ball, p1)) {
-      ball.cx = p1.x + p1.w + ball.radius;
-      float angle = bounceAngle(ball, p1);
-      ball.dx = cosf(angle);
-      ball.dy = sinf(angle);
-      registerPaddleHit(ball);
-    }
-    if (ball.dx > 0.0f && ball.cx <= p2.x && ballHitsPaddle(ball, p2)) {
-      ball.cx = p2.x - ball.radius;
-      float angle = bounceAngle(ball, p2);
-      ball.dx = -cosf(angle);
-      ball.dy = sinf(angle);
-      registerPaddleHit(ball);
-    }
+      // Detecting ball & paddle collision. The ball's center must still be in
+      // front of the paddle's face; once it's past, it's a miss.
+      if (ball.dx < 0.0f && ball.cx >= p1.x + p1.w &&
+          ballHitsPaddle(ball, p1)) {
+        ball.cx = p1.x + p1.w + ball.radius;
+        float angle = bounceAngle(ball, p1);
+        ball.dx = cosf(angle);
+        ball.dy = sinf(angle);
+        registerPaddleHit(ball);
+      }
+      if (ball.dx > 0.0f && ball.cx <= p2.x && ballHitsPaddle(ball, p2)) {
+        ball.cx = p2.x - ball.radius;
+        float angle = bounceAngle(ball, p2);
+        ball.dx = -cosf(angle);
+        ball.dy = sinf(angle);
+        registerPaddleHit(ball);
+      }
 
-    if (ball.cx - BALL_RADIUS <= 0.0f) {
-      ++score_p2;
-      restart(p1, p2, ball, startP1, startP2, startBall);
-      ball.dx = -fabsf(ball.dx); // serve toward player 1, who lost the point
-    }
-    if (ball.cx + BALL_RADIUS >= WIDTH) {
-      ++score_p1;
-      restart(p1, p2, ball, startP1, startP2, startBall);
-      ball.dx = fabsf(ball.dx); // serve toward player 2, who lost the point
+      if (ball.cx - BALL_RADIUS <= 0.0f) {
+        ++score_p2;
+        restart(p1, p2, ball, startP1, startP2, startBall);
+        ball.dx = -fabsf(ball.dx); // serve toward player 1, who lost the point
+      }
+      if (ball.cx + BALL_RADIUS >= WIDTH) {
+        ++score_p1;
+        restart(p1, p2, ball, startP1, startP2, startBall);
+        ball.dx = fabsf(ball.dx); // serve toward player 2, who lost the point
+      }
     }
 
     SDL_SetRenderDrawColor(renderer, 0, 0, 0, SDL_ALPHA_OPAQUE);
@@ -158,10 +184,14 @@ int main(void) {
     SDL_SetRenderDrawColor(renderer, 255, 255, 255, SDL_ALPHA_OPAQUE);
     SDL_RenderFillRect(renderer, &p1);
     SDL_RenderFillRect(renderer, &p2);
-    DrawCircle(renderer, ball);
+    if (started)
+      DrawCircle(renderer, ball); // hidden behind the start button otherwise
 
     renderScore(renderer, font, score_p1, 60.0f, 20.0f);
     renderScore(renderer, font, score_p2, WIDTH - 200.0f, 20.0f);
+
+    if (!started)
+      renderButton(renderer, font, startButton);
 
     SDL_RenderPresent(renderer);
   }
